@@ -1,0 +1,20 @@
+[versions]
+java = "21"
+springBoot = "4.1.0"
+springDependencyManagement = "1.1.7"
+
+[libraries]
+# Versions are omitted on purpose: the Spring Boot BOM (applied by the
+# io.spring.dependency-management plugin) manages them.
+spring-boot-starter-web = { module = "org.springframework.boot:spring-boot-starter-web" }
+spring-boot-starter-actuator = { module = "org.springframework.boot:spring-boot-starter-actuator" }
+spring-boot-starter-test = { module = "org.springframework.boot:spring-boot-starter-test" }
+# Spring Boot 4 moved Kafka auto-configuration out of spring-boot-autoconfigure into
+# its own module. Depending on org.springframework.kafka:spring-kafka alone gives you
+# the library but NOT KafkaAutoConfiguration (no KafkaTemplate bean) - use the starter.
+spring-boot-starter-kafka = { module = "org.springframework.boot:spring-boot-starter-kafka" }
+spring-kafka-test = { module = "org.springframework.kafka:spring-kafka-test" }
+
+[plugins]
+spring-boot = { id = "org.springframework.boot", version.ref = "springBoot" }
+spring-dependency-management = { id = "io.spring.dependency-management", version.ref = "springDependencyManagement" }
