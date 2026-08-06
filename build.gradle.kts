@@ -18,6 +18,13 @@ repositories {
     mavenCentral()
 }
 
+// The Spring Boot plugin already adds this, but declaring it explicitly keeps IDEs
+// that read the Gradle model (and anyone running javac directly) honest: without it,
+// Spring cannot infer @RequestParam / @PathVariable names from method parameters.
+tasks.withType<JavaCompile>().configureEach {
+    options.compilerArgs.add("-parameters")
+}
+
 dependencies {
     implementation(libs.spring.boot.starter.web)
     implementation(libs.spring.boot.starter.actuator)

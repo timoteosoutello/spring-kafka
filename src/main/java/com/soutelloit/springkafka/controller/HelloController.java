@@ -29,7 +29,8 @@ public class HelloController {
 
     /** Publishes a message to Kafka; the consumer picks it up asynchronously. */
     @PostMapping
-    public Map<String, String> publish(@RequestParam(defaultValue = "hello world") String message) {
+    public Map<String, String> publish(
+            @RequestParam(name = "message", defaultValue = "hello world") String message) {
         producer.send(message);
         return Map.of("status", "sent", "message", message);
     }

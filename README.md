@@ -63,6 +63,24 @@ consumer catches up), and a 404 negative case — 15 assertions total.
 Run it as a *collection*, not as individual requests: the publish/consume
 assertion depends on the requests running in order.
 
+## Troubleshooting
+
+**`Name for argument of type [java.lang.String] not specified ... use the '-parameters' flag`**
+
+Spring infers `@RequestParam` / `@PathVariable` names from compiled method parameter names,
+which only exist if the compiler ran with `-parameters`. Gradle does this (the Boot plugin
+adds it, and `build.gradle.kts` sets it explicitly). Eclipse compiles with its own JDT
+compiler and does not, unless told to.
+
+Fixed here in two independent ways:
+
+1. Every binding annotation names its parameter explicitly (`@RequestParam(name = "message", ...)`),
+   so the code works no matter how it was compiled. Do this for any new controller argument.
+2. `.settings/org.eclipse.jdt.core.prefs` pins `methodParameters=generate` for the project.
+   If Eclipse ignores it, set it globally: *Window > Preferences > Java > Compiler >
+   "Store information about method parameters (usable via reflection)"*, then
+   *Project > Clean*.
+
 ## Bumping versions
 
 Everything version-related lives in `gradle/libs.versions.toml`. For Gradle itself:
