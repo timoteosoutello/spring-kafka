@@ -1,0 +1,23 @@
+erDiagram
+    orders {
+        bigint id "PK"
+        character_varying order_ref "UK"
+        character_varying idempotency_key "UK"
+        character_varying customer_id
+        character_varying product
+        integer quantity
+        numeric amount
+        character_varying status
+        bigint version
+        timestamp_with_time_zone created_at
+        timestamp_with_time_zone updated_at
+        bigint product_stock_id "FK"
+    }
+    product_stock {
+        bigint id "PK"
+        character_varying product "UK"
+        integer available
+        integer reserved
+        timestamp_with_time_zone updated_at
+    }
+    product_stock ||--o{ orders : "product_stock_id"

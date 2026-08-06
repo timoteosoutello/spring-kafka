@@ -28,10 +28,18 @@ tasks.withType<JavaCompile>().configureEach {
 dependencies {
     implementation(libs.spring.boot.starter.web)
     implementation(libs.spring.boot.starter.actuator)
+    implementation(libs.spring.boot.starter.validation)
     implementation(libs.spring.boot.starter.kafka)
+    implementation(libs.spring.boot.starter.data.jpa)
+    implementation(libs.spring.boot.starter.data.redis)
+    implementation(libs.spring.boot.starter.flyway)
+    implementation(libs.spring.boot.starter.jackson)
+
+    runtimeOnly(libs.flyway.database.postgresql)
+    runtimeOnly(libs.postgresql)
 
     testImplementation(libs.spring.boot.starter.test)
-    testImplementation(libs.spring.kafka.test)
+    testImplementation(libs.spring.boot.starter.kafka.test)
 }
 
 tasks.withType<Test>().configureEach {

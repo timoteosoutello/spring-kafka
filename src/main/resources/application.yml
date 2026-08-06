@@ -1,6 +1,40 @@
 spring:
   application:
     name: spring-kafka
+
+  datasource:
+    # 5433 = the port docker-compose publishes, deliberately off 5432 so a locally
+    # installed PostgreSQL cannot be hit by accident.
+    url: jdbc:postgresql://localhost:5433/orders
+    username: app
+    password: app
+    hikari:
+      maximum-pool-size: 10
+      # Bounds how long a transaction blocks on SELECT ... FOR UPDATE.
+      # Exceeding it raises CannotAcquireLockException -> HTTP 503 instead of hanging.
+      connection-init-sql: SET lock_timeout = '5s'
+
+  jpa:
+    open-in-view: false
+    hibernate:
+      # Flyway owns the schema. 'validate' fails fast if the entities drift from it.
+      # Switch to 'none' if you ever need to boot against a schema you do not control.
+      ddl-auto: validate
+    properties:
+      hibernate.jdbc.time_zone: UTC
+      hibernate.jdbc.batch_size: 20
+
+  flyway:
+    enabled: true
+    locations: classpath:db/migration
+    baseline-on-migrate: true
+
+  data:
+    redis:
+      host: localhost
+      port: 6379
+      timeout: 2s
+
   kafka:
     bootstrap-servers: localhost:9092
     consumer:
@@ -19,12 +53,26 @@ management:
   endpoints:
     web:
       exposure:
-        include: health,info
+        include: health,info,flyway
+  endpoint:
+    health:
+      show-details: always
 
 app:
   kafka:
     topic: hello-topic
+    order-topic: order-events
+  idempotency:
+    # Short: covers only the window while a request is being processed.
+    in-progress-ttl: 1m
+    # Long: how far back a client may safely replay the same Idempotency-Key.
+    completed-ttl: 24h
+  lock:
+    # How long to wait for the in-JVM ReentrantLock before giving up with 503.
+    acquire-timeout: 5s
 
 logging:
   level:
     com.soutelloit.springkafka: INFO
+    # Uncomment to watch the FOR UPDATE statements:
+    # org.hibernate.SQL: DEBUG

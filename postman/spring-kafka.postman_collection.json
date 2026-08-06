@@ -2,7 +2,7 @@
   "info": {
     "_postman_id": "0f6d2b1a-6a2c-4c1e-9a3f-5b7c8d9e0a11",
     "name": "spring-kafka",
-    "description": "Smoke tests for the Spring Boot 4 + Kafka sample. Run the folder in order: health -> hello -> publish -> last consumed.",
+    "description": "Smoke tests for the Spring Boot 4 sample. Run the whole collection in order: the Kafka round-trip and the idempotency replay both depend on request ordering.",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
   "variable": [
@@ -15,192 +15,797 @@
       "key": "message",
       "value": "",
       "type": "string"
+    },
+    {
+      "key": "idemKey",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "orderRef",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "customerId",
+      "value": "cust-postman",
+      "type": "string"
     }
   ],
   "item": [
     {
-      "name": "Health",
-      "request": {
-        "method": "GET",
-        "header": [{ "key": "Accept", "value": "application/json" }],
-        "url": {
-          "raw": "{{baseUrl}}/actuator/health",
-          "host": ["{{baseUrl}}"],
-          "path": ["actuator", "health"]
-        },
-        "description": "Actuator health. Also confirms the app is up before the other tests run."
-      },
-      "event": [
+      "name": "Hello (Kafka)",
+      "description": "Original smoke tests: REST + Kafka round-trip on hello-topic.",
+      "item": [
         {
-          "listen": "test",
-          "script": {
-            "type": "text/javascript",
-            "exec": [
-              "pm.test('status is 200', function () {",
-              "    pm.response.to.have.status(200);",
-              "});",
-              "",
-              "pm.test('status is UP', function () {",
-              "    pm.expect(pm.response.json().status).to.eql('UP');",
-              "});",
-              "",
-              "pm.test('responds under 2s', function () {",
-              "    pm.expect(pm.response.responseTime).to.be.below(2000);",
-              "});"
-            ]
-          }
+          "name": "Health",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/actuator/health",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "actuator",
+                "health"
+              ]
+            },
+            "description": "Actuator health. Also confirms the app is up before the other tests run."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status is 200', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test('status is UP', function () {",
+                  "    pm.expect(pm.response.json().status).to.eql('UP');",
+                  "});",
+                  "",
+                  "pm.test('responds under 2s', function () {",
+                  "    pm.expect(pm.response.responseTime).to.be.below(2000);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "GET /hello",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/hello",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "hello"
+              ]
+            },
+            "description": "Plain greeting from HelloController. No Kafka involved."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status is 200', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test('returns the greeting', function () {",
+                  "    pm.expect(pm.response.text()).to.eql('Hello from Spring Boot 4 + Kafka');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "POST /hello (publish)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/hello?message={{message}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "hello"
+              ],
+              "query": [
+                {
+                  "key": "message",
+                  "value": "{{message}}"
+                }
+              ]
+            },
+            "description": "Publishes a unique message to hello-topic. The message is generated in the pre-request script and saved as the {{message}} variable so the next request can assert on it."
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// Unique payload per run so the assertion below can't pass on a stale message.",
+                  "pm.collectionVariables.set('message', 'postman-' + Date.now());"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status is 200', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test('content type is JSON', function () {",
+                  "    pm.expect(pm.response.headers.get('Content-Type')).to.include('application/json');",
+                  "});",
+                  "",
+                  "const body = pm.response.json();",
+                  "",
+                  "pm.test('status field is sent', function () {",
+                  "    pm.expect(body.status).to.eql('sent');",
+                  "});",
+                  "",
+                  "pm.test('echoes the message we published', function () {",
+                  "    pm.expect(body.message).to.eql(pm.collectionVariables.get('message'));",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "GET /hello/last (consumed)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/hello/last",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "hello",
+                "last"
+              ]
+            },
+            "description": "Asserts the @KafkaListener actually consumed the message published by the previous request. Consumption is asynchronous, so this request retries itself for up to ~5 seconds."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const expected = pm.collectionVariables.get('message');",
+                  "const attempt = Number(pm.collectionVariables.get('lastAttempt') || 0);",
+                  "const MAX_ATTEMPTS = 10;",
+                  "",
+                  "pm.test('status is 200', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "const consumed = pm.response.json().lastConsumed;",
+                  "",
+                  "if (consumed !== expected && attempt < MAX_ATTEMPTS) {",
+                  "    // Kafka consumption is async - re-run this request.",
+                  "    // Pair with a runner delay (newman --delay-request 300) to space the retries out.",
+                  "    pm.collectionVariables.set('lastAttempt', attempt + 1);",
+                  "    pm.execution.setNextRequest('GET /hello/last (consumed)');",
+                  "    console.log('Not consumed yet, retry ' + (attempt + 1) + '/' + MAX_ATTEMPTS);",
+                  "} else {",
+                  "    pm.collectionVariables.set('lastAttempt', 0);",
+                  "    pm.test('consumer received the published message', function () {",
+                  "        pm.expect(consumed).to.eql(expected);",
+                  "    });",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "GET /hello/unknown (404)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/hello/does-not-exist",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "hello",
+                "does-not-exist"
+              ]
+            },
+            "description": "Negative case - unmapped path should not return 200."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status is 404', function () {",
+                  "    pm.response.to.have.status(404);",
+                  "});"
+                ]
+              }
+            }
+          ]
         }
       ]
     },
     {
-      "name": "GET /hello",
-      "request": {
-        "method": "GET",
-        "header": [],
-        "url": {
-          "raw": "{{baseUrl}}/hello",
-          "host": ["{{baseUrl}}"],
-          "path": ["hello"]
-        },
-        "description": "Plain greeting from HelloController. No Kafka involved."
-      },
-      "event": [
+      "name": "Orders (Redis + PostgreSQL)",
+      "description": "Order flow: Idempotency-Key in Redis, ReentrantLock per product, pessimistic row lock in PostgreSQL, Kafka event after commit. Run in order - 'Replay' depends on 'Create order'.",
+      "item": [
         {
-          "listen": "test",
-          "script": {
-            "type": "text/javascript",
-            "exec": [
-              "pm.test('status is 200', function () {",
-              "    pm.response.to.have.status(200);",
-              "});",
-              "",
-              "pm.test('returns the greeting', function () {",
-              "    pm.expect(pm.response.text()).to.eql('Hello from Spring Boot 4 + Kafka');",
-              "});"
-            ]
-          }
-        }
-      ]
-    },
-    {
-      "name": "POST /hello (publish)",
-      "request": {
-        "method": "POST",
-        "header": [{ "key": "Accept", "value": "application/json" }],
-        "url": {
-          "raw": "{{baseUrl}}/hello?message={{message}}",
-          "host": ["{{baseUrl}}"],
-          "path": ["hello"],
-          "query": [{ "key": "message", "value": "{{message}}" }]
+          "name": "Create order",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Idempotency-Key",
+                "value": "{{idemKey}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/orders",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "orders"
+              ]
+            },
+            "description": "First call with a fresh Idempotency-Key. Expect 201 + Location header. The key and the returned orderRef are saved for the next requests.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"customerId\": \"{{customerId}}\",\n  \"product\": \"widget\",\n  \"quantity\": 2,\n  \"amount\": 19.98\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// Fresh key per run so the first call is always a genuine create.",
+                  "pm.collectionVariables.set('idemKey', 'idem-' + Date.now());"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status is 201 Created', function () {",
+                  "    pm.response.to.have.status(201);",
+                  "});",
+                  "",
+                  "const body = pm.response.json();",
+                  "",
+                  "pm.test('returns an order ref', function () {",
+                  "    pm.expect(body.orderRef).to.match(/^ORD-/);",
+                  "});",
+                  "",
+                  "pm.test('is not a replay', function () {",
+                  "    pm.expect(body.replayed).to.eql(false);",
+                  "});",
+                  "",
+                  "pm.test('status is NEW', function () {",
+                  "    pm.expect(body.status).to.eql('NEW');",
+                  "});",
+                  "",
+                  "pm.test('Location header points at the order', function () {",
+                  "    pm.expect(pm.response.headers.get('Location')).to.include(body.orderRef);",
+                  "});",
+                  "",
+                  "pm.collectionVariables.set('orderRef', body.orderRef);"
+                ]
+              }
+            }
+          ]
         },
-        "description": "Publishes a unique message to hello-topic. The message is generated in the pre-request script and saved as the {{message}} variable so the next request can assert on it."
-      },
-      "event": [
         {
-          "listen": "prerequest",
-          "script": {
-            "type": "text/javascript",
-            "exec": [
-              "// Unique payload per run so the assertion below can't pass on a stale message.",
-              "pm.collectionVariables.set('message', 'postman-' + Date.now());"
-            ]
-          }
+          "name": "Replay same Idempotency-Key",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Idempotency-Key",
+                "value": "{{idemKey}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/orders",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "orders"
+              ]
+            },
+            "description": "Same key, same payload. Redis short-circuits this: expect 200 (not 201), replayed=true, and the SAME orderRef - no second row in PostgreSQL.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"customerId\": \"{{customerId}}\",\n  \"product\": \"widget\",\n  \"quantity\": 2,\n  \"amount\": 19.98\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status is 200, not 201', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "const body = pm.response.json();",
+                  "",
+                  "pm.test('flagged as a replay', function () {",
+                  "    pm.expect(body.replayed).to.eql(true);",
+                  "});",
+                  "",
+                  "pm.test('returns the ORIGINAL order, no duplicate created', function () {",
+                  "    pm.expect(body.orderRef).to.eql(pm.collectionVariables.get('orderRef'));",
+                  "});"
+                ]
+              }
+            }
+          ]
         },
         {
-          "listen": "test",
-          "script": {
-            "type": "text/javascript",
-            "exec": [
-              "pm.test('status is 200', function () {",
-              "    pm.response.to.have.status(200);",
-              "});",
-              "",
-              "pm.test('content type is JSON', function () {",
-              "    pm.expect(pm.response.headers.get('Content-Type')).to.include('application/json');",
-              "});",
-              "",
-              "const body = pm.response.json();",
-              "",
-              "pm.test('status field is sent', function () {",
-              "    pm.expect(body.status).to.eql('sent');",
-              "});",
-              "",
-              "pm.test('echoes the message we published', function () {",
-              "    pm.expect(body.message).to.eql(pm.collectionVariables.get('message'));",
-              "});"
-            ]
-          }
-        }
-      ]
-    },
-    {
-      "name": "GET /hello/last (consumed)",
-      "request": {
-        "method": "GET",
-        "header": [{ "key": "Accept", "value": "application/json" }],
-        "url": {
-          "raw": "{{baseUrl}}/hello/last",
-          "host": ["{{baseUrl}}"],
-          "path": ["hello", "last"]
+          "name": "Get order by ref",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/orders/{{orderRef}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "orders",
+                "{{orderRef}}"
+              ]
+            },
+            "description": "Reads the order back through the NAMED entity graph (@NamedEntityGraph on OrderEntity), so the stock row comes back in the same SELECT."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status is 200', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "const body = pm.response.json();",
+                  "",
+                  "pm.test('matches the created order', function () {",
+                  "    pm.expect(body.orderRef).to.eql(pm.collectionVariables.get('orderRef'));",
+                  "    pm.expect(body.product).to.eql('widget');",
+                  "    pm.expect(body.quantity).to.eql(2);",
+                  "});",
+                  "",
+                  "// If the entity graph were missing, the association would still be a lazy proxy",
+                  "// after the transaction closed and this endpoint would 500 with",
+                  "// LazyInitializationException instead of returning a stock block.",
+                  "pm.test('entity graph fetched the stock association', function () {",
+                  "    pm.expect(body.stock, 'stock should be eagerly fetched').to.be.an('object');",
+                  "    pm.expect(body.stock.product).to.eql('widget');",
+                  "    pm.expect(body.stock.available).to.be.a('number');",
+                  "    pm.expect(body.stock.reserved).to.be.at.least(2);",
+                  "});"
+                ]
+              }
+            }
+          ]
         },
-        "description": "Asserts the @KafkaListener actually consumed the message published by the previous request. Consumption is asynchronous, so this request retries itself for up to ~5 seconds."
-      },
-      "event": [
         {
-          "listen": "test",
-          "script": {
-            "type": "text/javascript",
-            "exec": [
-              "const expected = pm.collectionVariables.get('message');",
-              "const attempt = Number(pm.collectionVariables.get('lastAttempt') || 0);",
-              "const MAX_ATTEMPTS = 10;",
-              "",
-              "pm.test('status is 200', function () {",
-              "    pm.response.to.have.status(200);",
-              "});",
-              "",
-              "const consumed = pm.response.json().lastConsumed;",
-              "",
-              "if (consumed !== expected && attempt < MAX_ATTEMPTS) {",
-              "    // Kafka consumption is async - re-run this request.",
-              "    // Pair with a runner delay (newman --delay-request 300) to space the retries out.",
-              "    pm.collectionVariables.set('lastAttempt', attempt + 1);",
-              "    pm.execution.setNextRequest('GET /hello/last (consumed)');",
-              "    console.log('Not consumed yet, retry ' + (attempt + 1) + '/' + MAX_ATTEMPTS);",
-              "} else {",
-              "    pm.collectionVariables.set('lastAttempt', 0);",
-              "    pm.test('consumer received the published message', function () {",
-              "        pm.expect(consumed).to.eql(expected);",
-              "    });",
-              "}"
-            ]
-          }
-        }
-      ]
-    },
-    {
-      "name": "GET /hello/unknown (404)",
-      "request": {
-        "method": "GET",
-        "header": [],
-        "url": {
-          "raw": "{{baseUrl}}/hello/does-not-exist",
-          "host": ["{{baseUrl}}"],
-          "path": ["hello", "does-not-exist"]
+          "name": "List orders by customer",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/orders?customerId={{customerId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "orders"
+              ],
+              "query": [
+                {
+                  "key": "customerId",
+                  "value": "{{customerId}}"
+                }
+              ]
+            },
+            "description": "Most recent 20 orders, loaded via an AD-HOC entity graph (@EntityGraph(attributePaths)). One query for the page instead of 1 + N."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status is 200', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "const body = pm.response.json();",
+                  "",
+                  "pm.test('returns an array containing our order', function () {",
+                  "    pm.expect(body).to.be.an('array').that.is.not.empty;",
+                  "    const refs = body.map(function (o) { return o.orderRef; });",
+                  "    pm.expect(refs).to.include(pm.collectionVariables.get('orderRef'));",
+                  "});",
+                  "",
+                  "pm.test('every row carries its stock (no N+1, no lazy proxy)', function () {",
+                  "    body.forEach(function (o) {",
+                  "        pm.expect(o.stock, 'stock on ' + o.orderRef).to.be.an('object');",
+                  "        pm.expect(o.stock.product).to.eql(o.product);",
+                  "    });",
+                  "});"
+                ]
+              }
+            }
+          ]
         },
-        "description": "Negative case - unmapped path should not return 200."
-      },
-      "event": [
         {
-          "listen": "test",
-          "script": {
-            "type": "text/javascript",
-            "exec": [
-              "pm.test('status is 404', function () {",
-              "    pm.response.to.have.status(404);",
-              "});"
-            ]
-          }
+          "name": "Validation error (400)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Idempotency-Key",
+                "value": "{{idemKey}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/orders",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "orders"
+              ]
+            },
+            "description": "quantity=0 violates @Min(1) and the ck_orders_quantity CHECK. Expect a 400 problem detail listing the offending field.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"customerId\": \"{{customerId}}\",\n  \"product\": \"widget\",\n  \"quantity\": 0,\n  \"amount\": 1.0\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.collectionVariables.set('idemKey', 'idem-bad-' + Date.now());"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status is 400', function () {",
+                  "    pm.response.to.have.status(400);",
+                  "});",
+                  "",
+                  "const body = pm.response.json();",
+                  "",
+                  "pm.test('problem detail names the bad field', function () {",
+                  "    pm.expect(body.errors).to.have.property('quantity');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Unknown product (422)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Idempotency-Key",
+                "value": "{{idemKey}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/orders",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "orders"
+              ]
+            },
+            "description": "No product_stock row to lock. Expect 422.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"customerId\": \"{{customerId}}\",\n  \"product\": \"does-not-exist\",\n  \"quantity\": 1,\n  \"amount\": 1.0\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.collectionVariables.set('idemKey', 'idem-nop-' + Date.now());"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status is 422', function () {",
+                  "    pm.response.to.have.status(422);",
+                  "});",
+                  "",
+                  "pm.test('problem detail explains why', function () {",
+                  "    pm.expect(pm.response.json().title).to.eql('Unknown product');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Insufficient stock (409)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Idempotency-Key",
+                "value": "{{idemKey}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/orders",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "orders"
+              ]
+            },
+            "description": "'gizmo' is seeded with only 3 units. Ordering 999 exercises the check that runs while the stock row is locked FOR UPDATE.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"customerId\": \"{{customerId}}\",\n  \"product\": \"gizmo\",\n  \"quantity\": 999,\n  \"amount\": 999.0\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.collectionVariables.set('idemKey', 'idem-stock-' + Date.now());"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status is 409', function () {",
+                  "    pm.response.to.have.status(409);",
+                  "});",
+                  "",
+                  "pm.test('problem detail explains why', function () {",
+                  "    pm.expect(pm.response.json().title).to.eql('Insufficient stock');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Missing Idempotency-Key (400)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/orders",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "orders"
+              ]
+            },
+            "description": "The header is mandatory - Spring rejects the request before OrderService runs.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"customerId\": \"{{customerId}}\",\n  \"product\": \"widget\",\n  \"quantity\": 2,\n  \"amount\": 19.98\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status is 400', function () {",
+                  "    pm.response.to.have.status(400);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Unknown order (404)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/orders/ORD-does-not-exist",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "orders",
+                "ORD-does-not-exist"
+              ]
+            },
+            "description": "Negative case."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status is 404', function () {",
+                  "    pm.response.to.have.status(404);",
+                  "});"
+                ]
+              }
+            }
+          ]
         }
       ]
     }
